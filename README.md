@@ -1,5 +1,7 @@
 # PDF a Markdown
 
+**Úsala aquí:** <https://pdf2md-pi-beige.vercel.app>. Cada cambio que se sube a `main` se publica automáticamente en Vercel.
+
 Web para convertir PDFs a Markdown **dentro del navegador**:
 
 - **Sin tokens ni IA**: usa pdf.js (Mozilla) para leer el texto y Tesseract.js para el OCR.
