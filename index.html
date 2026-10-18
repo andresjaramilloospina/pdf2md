@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PDF a Markdown</title>
+  <meta name="description" content="Convierte PDFs a Markdown en tu navegador. Gratis, sin IA y sin subir archivos." />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232563eb'/><text x='16' y='22' font-size='14' font-family='sans-serif' font-weight='700' fill='white' text-anchor='middle'>MD</text></svg>" />
+  <style>
+    :root {
+      --bg: #f6f7f9; --panel: #ffffff; --text: #16181d; --muted: #5d6470;
+      --border: #dfe3ea; --accent: #2563eb; --accent-text: #ffffff;
+      --ok: #15803d; --err: #b91c1c; --code-bg: #f1f3f6; --drop: #eef3ff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #0f1115; --panel: #171a20; --text: #e8eaee; --muted: #9aa2ae;
+        --border: #2a2f38; --accent: #5b8cff; --accent-text: #0b0d12;
+        --ok: #4ade80; --err: #f87171; --code-bg: #1e222a; --drop: #18213a;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    main { max-width: 1100px; margin: 0 auto; padding: 28px 16px 60px; }
+    h1 { font-size: 26px; margin: 0 0 4px; }
+    .sub { color: var(--muted); margin: 0 0 22px; }
+    .drop {
+      display: block; border: 2px dashed var(--border); border-radius: 14px; background: var(--panel);
+      padding: 36px 16px; text-align: center; cursor: pointer; transition: .15s;
+    }
+    .drop.over { border-color: var(--accent); background: var(--drop); }
+    .drop strong { font-size: 17px; }
+    .drop p { margin: 6px 0 0; color: var(--muted); }
+    .opts { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 16px 0; color: var(--muted); font-size: 14px; }
+    .opts label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+    button, .btn {
+      font: inherit; font-size: 14px; border: 1px solid var(--border); background: var(--panel);
+      color: var(--text); padding: 7px 12px; border-radius: 8px; cursor: pointer;
+    }
+    button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+    button:disabled { opacity: .5; cursor: default; }
+    .bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 18px 0 10px; }
+    .bar .grow { flex: 1; }
+    .layout { display: grid; grid-template-columns: 280px 1fr; gap: 16px; }
+    @media (max-width: 760px) { .layout { grid-template-columns: 1fr; } }
+    .files { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+    .file {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+      padding: 10px 12px; cursor: pointer; min-width: 0;
+    }
+    .file.active { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+    .file .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file .st { font-size: 13px; color: var(--muted); }
+    .file .st.ok { color: var(--ok); } .file .st.err { color: var(--err); }
+    .viewer { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; min-width: 0; display: flex; flex-direction: column; }
+    .tabs { display: flex; gap: 4px; padding: 8px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    .tabs button.on { background: var(--code-bg); border-color: var(--accent); }
+    .tabs .grow { flex: 1; }
+    textarea {
+      width: 100%; min-height: 60vh; border: 0; resize: vertical; padding: 14px; background: var(--panel);
+      color: var(--text); font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; outline: none;
+    }
+    .preview { padding: 6px 20px 20px; min-height: 60vh; overflow: auto; overflow-wrap: anywhere; }
+    .preview table { border-collapse: collapse; display: block; overflow-x: auto; }
+    .preview th, .preview td { border: 1px solid var(--border); padding: 4px 8px; }
+    .preview code, .preview pre { background: var(--code-bg); border-radius: 4px; }
+    .empty { padding: 40px 20px; color: var(--muted); text-align: center; }
+    .folder { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 14px 16px 2px; margin-top: 12px; }
+    .folder-row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; color: var(--muted); }
+    .folder .opts { margin: 10px 0; }
+    .hint { color: var(--muted); font-size: 14px; margin: 4px 0 12px; }
+    code { background: var(--code-bg); padding: 0 4px; border-radius: 4px; font-size: 0.92em; }
+    .hidden { display: none !important; }
+    footer { margin-top: 28px; color: var(--muted); font-size: 13px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>PDF a Markdown</h1>
+  <p class="sub">La conversión ocurre en tu navegador: los PDFs no se suben a ningún servidor y no se usa IA.</p>
+
+  <label class="drop" id="drop">
+    <input type="file" id="picker" accept="application/pdf,.pdf" multiple hidden />
+    <strong>Arrastra aquí tus PDFs</strong>
+    <p>o haz clic para elegirlos (puedes seleccionar varios)</p>
+  </label>
+
+  <section class="folder">
+    <div class="folder-row">
+      <button id="pickFolder" class="primary">Elegir una carpeta…</button>
+      <span>Convierte todos sus PDFs uno a uno y guarda cada <code>.md</code> junto a su PDF, con el mismo nombre.</span>
+    </div>
+    <div class="opts" id="folderOpts">
+      <label><input type="checkbox" id="optSub" checked /> Incluir subcarpetas</label>
+      <label><input type="checkbox" id="optCompendio" checked /> Crear también <code>compendio.md</code> en la carpeta</label>
+      <label><input type="checkbox" id="optOverwrite" /> Reemplazar <code>.md</code> que ya existan</label>
+    </div>
+    <p class="hint hidden" id="folderUnsupported">
+      Guardar directamente en la carpeta solo funciona en <strong>Chrome o Edge de computador</strong>.
+      En este navegador, arrastra los PDFs y usa «Descargar uno a uno»: conserva los nombres, pero los guarda en Descargas.
+    </p>
+  </section>
+
+  <div class="opts">
+    <label><input type="checkbox" id="optTables" checked /> Detectar tablas</label>
+    <label><input type="checkbox" id="optHeaders" checked /> Quitar encabezados y pies repetidos</label>
+    <label><input type="checkbox" id="optPages" /> Marcar saltos de página</label>
+    <label><input type="checkbox" id="optOcr" checked /> OCR para páginas escaneadas</label>
+    <label>Idioma OCR
+      <select id="optLang">
+        <option value="spa+eng" selected>Español + inglés</option>
+        <option value="spa">Español</option>
+        <option value="eng">Inglés</option>
+        <option value="por">Portugués</option>
+        <option value="fra">Francés</option>
+      </select>
+    </label>
+  </div>
+
+  <div class="bar hidden" id="bar">
+    <span class="grow" id="summary"></span>
+    <button id="dlEach" disabled>Descargar uno a uno</button>
+    <button id="dlCompendio" disabled>Descargar compendio.md</button>
+    <button id="zipAll" class="primary" disabled>Descargar todo (.zip)</button>
+    <button id="clear">Limpiar</button>
+  </div>
+
+  <div class="layout hidden" id="layout">
+    <ul class="files" id="files"></ul>
+    <section class="viewer">
+      <div class="tabs">
+        <button id="tabRaw" class="on">Markdown</button>
+        <button id="tabPrev">Vista previa</button>
+        <span class="grow"></span>
+        <button id="copy">Copiar</button>
+        <button id="dl" class="primary">Descargar .md</button>
+      </div>
+      <textarea id="raw" spellcheck="false" placeholder="Selecciona un archivo"></textarea>
+      <div class="preview hidden" id="prev"></div>
+    </section>
+  </div>
+
+  <footer>
+    Funciona con PDFs de texto y escaneados (OCR con Tesseract). Los documentos con diseño complejo
+    (varias columnas, tablas con celdas combinadas) pueden necesitar retoques.
+  </footer>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script type="module">
+  import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.min.mjs";
+  import { pdfToMarkdown, terminateOcr } from "./converter.js";
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4.10.38/build/pdf.worker.min.mjs";
+
+  const $ = (id) => document.getElementById(id);
+  const state = { files: [], active: -1, queue: Promise.resolve() };
+
+  const mdName = (name) => name.replace(/\.pdf$/i, "") + ".md";
+  const canFolder = "showDirectoryPicker" in window;
+
+  /** Une todos los documentos convertidos en un solo Markdown. */
+  function buildCompendio(entries) {
+    const done = entries.filter((f) => f.md);
+    const index = done.map((f, i) => `${i + 1}. ${f.name.replace(/\.pdf$/i, "")}`).join("\n");
+    const docs = done.map((f) =>
+      `---\n\n# ${f.name.replace(/\.pdf$/i, "")}\n\n` +
+      // Baja un nivel los títulos de cada documento para que cuelguen de su nombre.
+      f.md.replace(/^(#{1,5}) /gm, "#$1 ").trim()
+    );
+    return `# Compendio\n\n${done.length} documentos convertidos.\n\n${index}\n\n${docs.join("\n\n")}\n`;
+  }
+
+  async function exists(dir, name) {
+    try { await dir.getFileHandle(name); return true; } catch { return false; }
+  }
+
+  async function writeText(dir, name, text) {
+    const fh = await dir.getFileHandle(name, { create: true });
+    const w = await fh.createWritable();
+    await w.write(text);
+    await w.close();
+  }
+
+  async function saveNextToPdf(entry) {
+    const name = mdName(entry.fileName);
+    if (!$("optOverwrite").checked && (await exists(entry.dir, name))) {
+      entry.status += " · ya había un .md, no se reemplazó";
+      return;
+    }
+    await writeText(entry.dir, name, entry.md);
+    entry.status += " · guardado en la carpeta";
+  }
+
+  async function* findPdfs(dir, recursive, prefix = "") {
+    for await (const [name, handle] of dir.entries()) {
+      if (handle.kind === "file" && /\.pdf$/i.test(name)) yield { handle, dir, path: prefix + name };
+      else if (handle.kind === "directory" && recursive && !name.startsWith(".")) yield* findPdfs(handle, recursive, prefix + name + "/");
+    }
+  }
+
+  function escapeHtml(s) {
+    return s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  }
+
+  function render() {
+    const has = state.files.length > 0;
+    $("bar").classList.toggle("hidden", !has);
+    $("layout").classList.toggle("hidden", !has);
+    const done = state.files.filter((f) => f.md).length;
+    $("summary").textContent = `${done} de ${state.files.length} convertidos`;
+    $("zipAll").disabled = done === 0;
+    $("dlEach").disabled = done === 0;
+    $("dlCompendio").disabled = done === 0;
+
+    $("files").innerHTML = state.files
+      .map((f, i) => `<li class="file ${i === state.active ? "active" : ""}" data-i="${i}">
+          <div class="name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</div>
+          <div class="st ${f.error ? "err" : f.md ? "ok" : ""}">${escapeHtml(f.status)}</div>
+        </li>`)
+      .join("");
+
+    const cur = state.files[state.active];
+    if ($("raw").dataset.i !== String(state.active) || cur?.md !== $("raw").dataset.md) {
+      $("raw").value = cur?.md ?? (cur?.error ? "Error: " + cur.error : "");
+      $("raw").dataset.i = String(state.active);
+      $("raw").dataset.md = cur?.md ?? "";
+      if (!$("prev").classList.contains("hidden")) showPreview();
+    }
+  }
+
+  function showPreview() {
+    const md = $("raw").value;
+    $("prev").innerHTML = md ? window.marked.parse(escapeHtml(md).replace(/&gt;/g, ">")) : '<p class="empty">Nada que mostrar todavía.</p>';
+  }
+
+  function addFiles(list) {
+    const pdfs = [...list].filter((f) => f.type === "application/pdf" || /\.pdf$/i.test(f.name));
+    for (const file of pdfs) {
+      const entry = { name: file.name, fileName: file.name, md: null, error: null, status: "En cola…" };
+      state.files.push(entry);
+      if (state.active < 0) state.active = state.files.length - 1;
+      state.queue = state.queue.then(() => convert(file, entry));
+    }
+    render();
+  }
+
+  async function addFolder() {
+    let root;
+    try {
+      root = await window.showDirectoryPicker({ mode: "readwrite" });
+    } catch (e) {
+      if (e.name !== "AbortError") alert("No se pudo abrir la carpeta: " + e.message);
+      return;
+    }
+    const found = [];
+    for await (const item of findPdfs(root, $("optSub").checked)) found.push(item);
+    found.sort((a, b) => a.path.localeCompare(b.path, "es", { numeric: true }));
+    if (!found.length) { alert("No hay PDFs en esa carpeta."); return; }
+
+    const batch = found.map(({ handle, dir, path }) => {
+      const entry = { name: path, fileName: handle.name, dir, md: null, error: null, status: "En cola…" };
+      state.files.push(entry);
+      state.queue = state.queue.then(async () => convert(await handle.getFile(), entry));
+      return entry;
+    });
+    if (state.active < 0) state.active = state.files.indexOf(batch[0]);
+
+    const wantCompendio = $("optCompendio").checked;
+    state.queue = state.queue.then(async () => {
+      if (!wantCompendio || !batch.some((e) => e.md)) return;
+      let name = "compendio.md";
+      if (!$("optOverwrite").checked && (await exists(root, name))) name = `compendio ${new Date().toISOString().slice(0, 16).replace("T", " ").replace(":", "-")}.md`;
+      await writeText(root, name, buildCompendio(batch));
+      $("summary").textContent += ` · ${name} creado en «${root.name}»`;
+    }).catch((e) => alert("No se pudo crear el compendio: " + e.message));
+    render();
+  }
+
+  async function convert(file, entry) {
+    entry.status = "Leyendo…";
+    render();
+    try {
+      const data = await file.arrayBuffer();
+      const res = await pdfToMarkdown(pdfjsLib, data, {
+        tables: $("optTables").checked,
+        stripHeaders: $("optHeaders").checked,
+        pageBreaks: $("optPages").checked,
+        ocr: $("optOcr").checked,
+        ocrLangs: $("optLang").value,
+        onProgress: (n, total, kind) => {
+          entry.status = `Página ${n}/${total}${kind === "OCR" ? " (OCR…)" : ""}`;
+          render();
+        },
+      });
+      entry.md = res.markdown;
+      entry.status = `Listo · ${res.pages} pág.${res.ocrPages ? ` · ${res.ocrPages} con OCR` : ""}`;
+      if (entry.dir) {
+        try { await saveNextToPdf(entry); }
+        catch (e) { entry.status += " · no se pudo guardar: " + e.message; }
+      }
+    } catch (e) {
+      console.error(e);
+      entry.error = /password/i.test(e?.name + e?.message) ? "El PDF está protegido con contraseña." : e?.message || String(e);
+      entry.status = "Error: " + entry.error;
+    }
+    render();
+  }
+
+  function download(name, text) {
+    const url = URL.createObjectURL(new Blob([text], { type: "text/markdown;charset=utf-8" }));
+    const a = Object.assign(document.createElement("a"), { href: url, download: name });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  $("picker").addEventListener("change", (e) => { addFiles(e.target.files); e.target.value = ""; });
+  const drop = $("drop");
+  ["dragenter", "dragover"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((t) => drop.addEventListener(t, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", (e) => addFiles(e.dataTransfer.files));
+  // También acepta PDFs soltados en cualquier parte de la página.
+  window.addEventListener("dragover", (e) => e.preventDefault());
+  window.addEventListener("drop", (e) => { e.preventDefault(); if (!drop.contains(e.target)) addFiles(e.dataTransfer.files); });
+
+  $("files").addEventListener("click", (e) => {
+    const li = e.target.closest(".file");
+    if (li) { state.active = Number(li.dataset.i); render(); }
+  });
+
+  // Ediciones manuales en el cuadro de texto se guardan para la descarga.
+  $("raw").addEventListener("input", () => {
+    const cur = state.files[state.active];
+    if (cur && cur.md !== null) { cur.md = $("raw").value; $("raw").dataset.md = cur.md; }
+  });
+
+  $("tabRaw").onclick = () => { $("raw").classList.remove("hidden"); $("prev").classList.add("hidden"); $("tabRaw").classList.add("on"); $("tabPrev").classList.remove("on"); };
+  $("tabPrev").onclick = () => { showPreview(); $("prev").classList.remove("hidden"); $("raw").classList.add("hidden"); $("tabPrev").classList.add("on"); $("tabRaw").classList.remove("on"); };
+
+  $("copy").onclick = async () => {
+    try { await navigator.clipboard.writeText($("raw").value); $("copy").textContent = "¡Copiado!"; }
+    catch { $("raw").select(); document.execCommand("copy"); $("copy").textContent = "¡Copiado!"; }
+    setTimeout(() => ($("copy").textContent = "Copiar"), 1500);
+  };
+  $("dl").onclick = () => { const cur = state.files[state.active]; if (cur?.md) download(mdName(cur.fileName), cur.md); };
+
+  if (canFolder) $("pickFolder").onclick = addFolder;
+  else {
+    $("pickFolder").disabled = true;
+    $("folderOpts").classList.add("hidden");
+    $("folderUnsupported").classList.remove("hidden");
+  }
+
+  $("dlEach").onclick = async () => {
+    for (const f of state.files.filter((f) => f.md)) {
+      download(mdName(f.fileName), f.md);
+      await new Promise((r) => setTimeout(r, 350)); // los navegadores bloquean descargas demasiado seguidas
+    }
+  };
+  $("dlCompendio").onclick = () => download("compendio.md", buildCompendio(state.files));
+
+  $("zipAll").onclick = async () => {
+    const zip = new window.JSZip();
+    const used = new Set();
+    for (const f of state.files.filter((f) => f.md)) {
+      // Conserva la estructura de subcarpetas cuando vienen de "Elegir una carpeta".
+      let n = mdName(f.name), k = 2;
+      while (used.has(n)) n = mdName(f.name).replace(/\.md$/, ` (${k++}).md`);
+      used.add(n);
+      zip.file(n, f.md);
+    }
+    zip.file("compendio.md", buildCompendio(state.files));
+    const blob = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(blob);
+    Object.assign(document.createElement("a"), { href: url, download: "markdown.zip" }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  $("clear").onclick = async () => {
+    await state.queue;
+    state.files = []; state.active = -1;
+    await terminateOcr();
+    render();
+  };
+</script>
+</body>
+</html>
